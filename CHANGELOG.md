@@ -1,5 +1,11 @@
 # rake-db-testing
 
+## 0.3.0
+
+### Minor Changes
+
+- d1719b7: `pqb` is no longer a required peer dependency: `rake-db-testing` works through the passed `db`, and `pqb` and `rake-db` are only needed for types.
+
 ## 0.2.0
 
 ### Minor Changes
