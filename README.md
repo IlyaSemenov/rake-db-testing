@@ -153,7 +153,7 @@ The optional `rake-db-testing/fs` entry reads scenario files from the file syste
 
 `loadMigrationScenarios(directory, pattern)` returns the files matching the glob `pattern` relative to `directory` in the shape of `scenarios`.
 Pass `import.meta.dirname` as `directory` to resolve the pattern relative to the current file, as `import.meta.glob` does.
-It works in Bun, Vitest, and Node 22 or later with a TypeScript loader.
+It works in Bun, Vitest, and Node 22+ with a TypeScript loader.
 
 ## Requirements for migrations
 
@@ -188,5 +188,5 @@ Scenario "capitalizes lowercase names" of migration "0003_user_name_title_case" 
 
 ## Compatibility
 
-- `rake-db` 2.37 or later and `pqb` 0.72 or later, which is Orchid ORM 1.77 or later.
+- Orchid ORM 1.77+ (or `rake-db` 2.37+ and `pqb` 0.72+).
 - `Db`, `MigrateConfig`, and the migrator obtained through `orchid-orm` and `orchid-orm/migrations` are accepted.
