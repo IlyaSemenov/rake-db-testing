@@ -109,11 +109,15 @@ export function isScenarioFileOf(file: string, migrationPath: string): boolean {
 }
 
 function isScenario(value: unknown): value is MigrationScenario {
+  const candidate = value as Partial<MigrationScenario> | null
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as MigrationScenario).name === "string" &&
-    typeof (value as MigrationScenario).setup === "function"
+    typeof candidate?.name === "string" &&
+    typeof candidate.setup === "function" &&
+    (candidate.assertUp === undefined || typeof candidate.assertUp === "function") &&
+    (candidate.assertDown === undefined || typeof candidate.assertDown === "function") &&
+    (candidate.assertUpError === undefined || typeof candidate.assertUpError === "function")
   )
 }
 

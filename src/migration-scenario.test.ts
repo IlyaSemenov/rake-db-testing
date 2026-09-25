@@ -59,6 +59,20 @@ describe("importMigrationScenarios", () => {
     ).rejects.toThrow(message)
   })
 
+  it("rejects non-function assertion callbacks", async () => {
+    const message =
+      "Scenario file 0001_user.scenario.ts must export a scenario or an array of scenarios by default."
+    for (const callback of ["assertUp", "assertDown", "assertUpError"] as const) {
+      await expect(
+        load({
+          "0001_user.scenario.ts": {
+            default: { name: "invalid callback", setup, [callback]: 123 },
+          },
+        }),
+      ).rejects.toThrow(message)
+    }
+  })
+
   it("rejects assertUpError combined with assertUp", async () => {
     const mixed = {
       name: "mixed",
