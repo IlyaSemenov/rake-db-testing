@@ -1,5 +1,16 @@
 # rake-db-testing
 
+## 0.2.0
+
+### Minor Changes
+
+- af3d1b9: Accept rake-db `MigrateConfig` with `migrationsPath`.
+- 1f9a0fa: `verifyMigrations` requires a `migrator` option: the rake-db module the migrations import `change` from, such as `orchid-orm/migrations`; `rake-db` is now an optional peer dependency.
+
+### Patch Changes
+
+- 912c3be: `verifyMigrations` fails if a migration key verified earlier in the process comes with another migration.
+
 ## 0.1.0
 
 ### Minor Changes
