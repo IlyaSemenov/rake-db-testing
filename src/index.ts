@@ -7,4 +7,4 @@ export {
   type MigrationScenarioOptions,
   scenario,
 } from "./migration-scenario"
-export { verifyMigrations, type VerifyMigrationsOptions } from "./verify-migrations"
+export { type Migrator, verifyMigrations, type VerifyMigrationsOptions } from "./verify-migrations"

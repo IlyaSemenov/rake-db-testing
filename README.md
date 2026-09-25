@@ -11,7 +11,7 @@ Verify a [rake-db](https://orchid-orm.netlify.app/guide/migration-setup-and-over
 npm install --save-dev rake-db-testing
 ```
 
-`rake-db` and `pqb` are peer dependencies; see [Single rake-db instance](#single-rake-db-instance) for Orchid ORM projects.
+`pqb` is a peer dependency.
 
 ## What is verified
 
@@ -38,6 +38,7 @@ Call `verifyMigrations` inside a test.
 With Vitest:
 
 ```ts
+import * as migrator from "orchid-orm/migrations"
 import { verifyMigrations } from "rake-db-testing"
 import { test } from "vitest"
 
@@ -46,7 +47,7 @@ import { db, rakeDbConfig } from "./db"
 const scenarios = import.meta.glob("./migrations/*.scenario.ts", { eager: true })
 
 test("migration history", async () => {
-  await verifyMigrations({ db: db.$qb, config: rakeDbConfig, scenarios })
+  await verifyMigrations({ db: db.$qb, migrator, config: rakeDbConfig, scenarios })
 })
 ```
 
@@ -54,6 +55,7 @@ Or with the optional [file system loader](#load-scenarios-from-the-file-system),
 
 ```ts
 import { test } from "bun:test"
+import * as migrator from "orchid-orm/migrations"
 import { verifyMigrations } from "rake-db-testing"
 import { loadMigrationScenarios } from "rake-db-testing/fs"
 
@@ -62,9 +64,12 @@ import { db, rakeDbConfig } from "./db"
 const scenarios = await loadMigrationScenarios(import.meta.dirname, "migrations/*.scenario.ts")
 
 test("migration history", async () => {
-  await verifyMigrations({ db: db.$qb, config: rakeDbConfig, scenarios })
+  await verifyMigrations({ db: db.$qb, migrator, config: rakeDbConfig, scenarios })
 })
 ```
+
+`migrator` is the module your migrations import `change` from: `orchid-orm/migrations` in Orchid ORM projects, or `rake-db`.
+Migrations run by another rake-db copy silently do nothing ([orchid-orm#765](https://github.com/romeerez/orchid-orm/issues/765)).
 
 `config` is the migrator configuration of your project:
 
@@ -167,6 +172,7 @@ Pass `searchPath` to make other schemas visible to them:
 ```ts
 await verifyMigrations({
   db,
+  migrator,
   config: rakeDbConfig,
   searchPath: (schema) => `${schema}, extensions`,
 })
@@ -181,38 +187,7 @@ Migration "0002_post" failed at "down on clean schema".
 Scenario "capitalizes lowercase names" of migration "0003_user_name_title_case" failed at "assertUp".
 ```
 
-## Single rake-db instance
-
-rake-db collects the `change()` calls of a migration file in module state, and `migrate` reads them from there.
-If a project's migrations call `change` from one copy of rake-db while `rake-db-testing` resolves another copy, `migrate` sees no changes: the migrations silently do nothing, and the verification may pass falsely.
-`rake-db-testing` cannot detect this, because the registry of the other copy is not observable.
-
-Make sure that the project has a single copy of rake-db and pqb.
-Orchid ORM pins exact versions of both, so add them as direct dependencies of the project with exactly the versions listed in the `dependencies` of the installed `orchid-orm`, and update them together with it:
-
-```sh
-npm view orchid-orm@<installed version> dependencies
-npm install --save-exact rake-db@<version> pqb@<version>
-```
-
-Check that only one copy of each is installed:
-
-```sh
-npm ls rake-db pqb
-pnpm why rake-db pqb
-bun pm ls --all | grep -E "rake-db|pqb"
-```
-
-Alternatively, export changes from migration files by default and enable `forceDefaultExports`.
-rake-db then takes the changes from the module exports instead of its module state, and a second copy no longer matters:
-
-```ts
-export default change(async (db) => {
-  await db.createTable("user", (t) => ({ id: t.identity().primaryKey() }))
-})
-```
-
 ## Compatibility
 
 - `rake-db` 2.37 or later and `pqb` 0.72 or later, which is Orchid ORM 1.77 or later.
-- `Db` and `MigrateConfig` obtained through `orchid-orm` and `orchid-orm/migrations` are accepted.
+- `Db`, `MigrateConfig`, and the migrator obtained through `orchid-orm` and `orchid-orm/migrations` are accepted.

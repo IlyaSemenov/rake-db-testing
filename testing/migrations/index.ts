@@ -1,7 +1,6 @@
 export * from "./broken-down"
 export * from "./broken-restore"
 export * from "./copy"
-export * from "./copy-default"
 export * from "./extra-version"
 export * from "./file-based"
 export * from "./search-path"

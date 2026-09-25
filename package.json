@@ -65,5 +65,10 @@
     "pqb": ">=0.72.0 <1",
     "rake-db": ">=2.37.0 <3"
   },
+  "peerDependenciesMeta": {
+    "rake-db": {
+      "optional": true
+    }
+  },
   "packageManager": "bun@1.4.0"
 }

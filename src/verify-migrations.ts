@@ -1,11 +1,5 @@
 import { type Db, testTransaction } from "pqb"
-import {
-  type MigrateConfig,
-  type MigrateFn,
-  migrate,
-  rakeDbConfigDefaults,
-  rollback,
-} from "rake-db"
+import type { MigrateConfig, MigrateFn } from "rake-db"
 
 import {
   getMigrationName,
@@ -20,8 +14,20 @@ type MigrationItem = Parameters<
   NonNullable<MigrateConfig["beforeMigrate"]>
 >[0]["migrations"][number]
 
+/**
+ * The rake-db module that the migrations import `change` from, such as `orchid-orm/migrations` or `rake-db`.
+ *
+ * rake-db collects `change()` calls in module state, so migrations run by another rake-db copy silently do nothing.
+ */
+export interface Migrator {
+  migrate: MigrateFn
+  rollback: MigrateFn
+  rakeDbConfigDefaults: { migrationsTable: string }
+}
+
 export interface VerifyMigrationsOptions {
   db: Db
+  migrator: Migrator
   /** Migrator configuration of the project. */
   config: MigrateConfig
   /** Scenario modules keyed by file path; the file name binds scenarios to their migration. */
@@ -47,6 +53,7 @@ export interface VerifyMigrationsOptions {
  */
 export async function verifyMigrations({
   db,
+  migrator: { migrate, rollback, rakeDbConfigDefaults },
   config,
   scenarios: scenarioModules = {},
   searchPath = (schema) => schema,

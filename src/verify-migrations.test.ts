@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 
 import { testTransaction } from "pqb"
+import * as migrator from "rake-db"
 
 import {
   brokenDownMigrations,
@@ -40,6 +41,7 @@ describe("valid history", () => {
     const schemasBefore = await getTestSchemas()
     await verifyMigrations({
       db,
+      migrator,
       config: { migrations: validMigrations, migrationsTable, log: false },
       scenarios: await loadMigrationScenarios(testingDir, "migrations/valid/*.scenario.ts"),
     })
@@ -50,7 +52,7 @@ describe("valid history", () => {
   })
 
   it("uses the default migrations table of rake-db", async () => {
-    await verifyMigrations({ db, config: { migrations: validMigrations, log: false } })
+    await verifyMigrations({ db, migrator, config: { migrations: validMigrations, log: false } })
   })
 
   it("keeps the caller's test transaction and search_path", async () => {
@@ -60,6 +62,7 @@ describe("valid history", () => {
       await db.query`SELECT set_config('search_path', 'pg_catalog', true)`
       await verifyMigrations({
         db,
+        migrator,
         config: { migrations: validMigrations, migrationsTable, log: false },
       })
       expect(await db.query.get<string>`SHOW search_path`).toBe("pg_catalog")
@@ -76,6 +79,7 @@ describe("broken history", () => {
     const error = await getError(
       verifyMigrations({
         db,
+        migrator,
         config: { migrations: brokenDownMigrations, migrationsTable, log: false },
       }),
     )
@@ -89,6 +93,7 @@ describe("broken history", () => {
     const error = await getError(
       verifyMigrations({
         db,
+        migrator,
         config: { migrations: brokenRestoreMigrations, migrationsTable, log: false },
       }),
     )
@@ -102,6 +107,7 @@ describe("broken history", () => {
     const error = await getError(
       verifyMigrations({
         db,
+        migrator,
         config: { migrations: extraVersionMigrations, migrationsTable, log: false },
       }),
     )
@@ -116,6 +122,7 @@ describe("config", () => {
     const ran: string[] = []
     await verifyMigrations({
       db,
+      migrator,
       config: {
         migrationsPath: fileBasedMigrationsPath,
         import: (path) => import(path),
@@ -140,12 +147,13 @@ describe("config", () => {
   it("rejects a history without migrations", async () => {
     const message = "Found no migrations to verify."
     const empty = await getError(
-      verifyMigrations({ db, config: { migrations: {}, migrationsTable, log: false } }),
+      verifyMigrations({ db, migrator, config: { migrations: {}, migrationsTable, log: false } }),
     )
     expect(empty.message).toBe(message)
     const missing = await getError(
       verifyMigrations({
         db,
+        migrator,
         config: {
           migrationsPath: `${fileBasedMigrationsPath}-missing`,
           import: (path) => import(path),
@@ -161,6 +169,7 @@ describe("config", () => {
     let calls = 0
     await verifyMigrations({
       db,
+      migrator,
       config: {
         migrations: validMigrations,
         migrationsTable,
@@ -177,6 +186,7 @@ describe("config", () => {
     const error = await getError(
       verifyMigrations({
         db,
+        migrator,
         config: { migrations: validMigrations, migrationsTable: "public.rake_migration" },
       }),
     )
@@ -190,6 +200,7 @@ describe("scenarios", () => {
   const verify = (migration: string, declared: MigrationScenario) =>
     verifyMigrations({
       db,
+      migrator,
       config: { migrations: validMigrations, migrationsTable, log: false },
       scenarios: { [`${migration}.scenario.ts`]: { default: declared } },
     })
@@ -313,13 +324,18 @@ describe("searchPath", () => {
         }),
       )
 
-      const error = await getError(verifyMigrations({ db, config }))
+      const error = await getError(verifyMigrations({ db, migrator, config }))
       expect(error.message).toBe(
         `Migration "0001_search_path_shared" failed at "up on clean schema".`,
       )
       expect(String((error.cause as Error).message)).toContain("shared_answer() does not exist")
 
-      await verifyMigrations({ db, config, searchPath: (schema) => `${schema}, ${sharedSchema}` })
+      await verifyMigrations({
+        db,
+        migrator,
+        config,
+        searchPath: (schema) => `${schema}, ${sharedSchema}`,
+      })
     } finally {
       await testTransaction.rollback(db)
     }
