@@ -1,5 +1,11 @@
 # rake-db-testing
 
+## 0.3.1
+
+### Patch Changes
+
+- 2f246ce: Reject scenario exports with non-function assertion callbacks before running migrations.
+
 ## 0.3.0
 
 ### Minor Changes
