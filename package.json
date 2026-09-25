@@ -1,6 +1,6 @@
 {
   "name": "rake-db-testing",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Verify rake-db migration history and data migration scenarios on PostgreSQL",
   "homepage": "https://github.com/IlyaSemenov/rake-db-testing#readme",
   "bugs": "https://github.com/IlyaSemenov/rake-db-testing/issues",
