@@ -66,6 +66,9 @@
     "rake-db": ">=2.37.0 <3"
   },
   "peerDependenciesMeta": {
+    "pqb": {
+      "optional": true
+    },
     "rake-db": {
       "optional": true
     }

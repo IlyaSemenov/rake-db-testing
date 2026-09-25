@@ -11,8 +11,6 @@ Verify a [rake-db](https://orchid-orm.netlify.app/guide/migration-setup-and-over
 npm install --save-dev rake-db-testing
 ```
 
-`pqb` is a peer dependency.
-
 ## What is verified
 
 The whole history is applied to a temporary schema, one migration at a time.
@@ -27,8 +25,8 @@ Each scenario starts from the schema before the migration:
 
 Scenarios do not affect each other or the rest of the history.
 
-Nothing is left in the database: the verification runs in a test transaction and rolls it back.
-Inside the caller's test transaction, it nests and leaves that transaction usable with its `search_path` unchanged.
+Nothing is left in the database: the verification runs in a transaction and rolls it back.
+Inside the caller's transaction, such as a test transaction, it nests and leaves that transaction usable with its `search_path` unchanged.
 
 ## Usage
 

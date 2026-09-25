@@ -1,4 +1,4 @@
-import { type Db, testTransaction } from "pqb"
+import type { Db } from "pqb"
 import type { MigrateConfig, MigrateFn } from "rake-db"
 
 import {
@@ -55,8 +55,8 @@ export interface VerifyMigrationsOptions {
  *    and `up` again must record the same version.
  * 3. The savepoint is rolled back, keeping the clean schema for the next migration.
  *
- * Everything runs inside a test transaction that is rolled back at the end,
- * nested into the caller's test transaction when there is one.
+ * Everything runs inside a transaction that is rolled back at the end,
+ * nested into the caller's transaction when there is one.
  *
  * Throws before running migrations if a migration key was verified earlier in this process with another module,
  * if rake-db finds no migrations, and, after a successful run, if a scenario file matches no migration.
@@ -245,13 +245,24 @@ async function runOneMigration(fn: MigrateFn, db: Db, config: MigrateConfig) {
   await db.query`SELECT set_config('search_path', ${searchPath}, true)`
 }
 
-/** Runs `fn` in a nested test transaction and always rolls its changes back. */
-async function withRollback<T>(db: Db, fn: () => Promise<T>): Promise<T> {
-  await testTransaction.start(db)
+/** Thrown by `withRollback` to roll back a transaction whose callback succeeded. */
+const rollback = Symbol("rollback")
+
+/**
+ * Runs `fn` in a transaction, or in a savepoint when a transaction is already open, and always rolls its changes back.
+ *
+ * pqb resolves the transaction from the async context, so queries through `db` join it only when made within `fn`.
+ */
+async function withRollback(db: Db, fn: () => Promise<void>) {
   try {
-    return await fn()
-  } finally {
-    await testTransaction.rollback(db)
+    await db.transaction(async () => {
+      await fn()
+      throw rollback
+    })
+  } catch (error) {
+    if (error !== rollback) {
+      throw error
+    }
   }
 }
 
