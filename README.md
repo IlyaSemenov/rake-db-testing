@@ -162,7 +162,8 @@ It works in Bun, Vitest, and Node 22 or later with a TypeScript loader.
 - Migrations do not name schemas and rely on `search_path`, so the history applies to any schema.
 - For objects outside the verified schema, such as extensions installed in a separate schema, pass [`searchPath`](#searchpath).
 - An irreversible data transformation runs only on `up`; a scenario of such a migration does not expect `assertDown` to see the original data.
-- Migration keys must be unique among all migration sets verified in one process: rake-db caches loaded migrations by key.
+- Migration keys must be unique among all migration sets verified in one process: rake-db caches loaded migrations by key ([orchid-orm#764](https://github.com/romeerez/orchid-orm/issues/764)).
+  The verification fails if a key verified earlier in the process comes with another migration.
 
 ### searchPath
 

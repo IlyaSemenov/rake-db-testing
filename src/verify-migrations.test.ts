@@ -10,6 +10,7 @@ import {
   db,
   extraVersionMigrations,
   fileBasedMigrationsPath,
+  keyCollisionMigrations,
   searchPathMigrations,
   validMigrations,
   testingDir,
@@ -192,6 +193,26 @@ describe("config", () => {
     )
     expect(error.message).toBe(
       `migrationsTable "public.rake_migration" must not include a schema: it is placed in the temporary schema.`,
+    )
+  })
+})
+
+describe("migration keys", () => {
+  const verify = (migrations: Record<string, () => Promise<unknown>>) =>
+    verifyMigrations({ db, migrator, config: { migrations, migrationsTable, log: false } })
+
+  it("rejects a key verified earlier with another module", async () => {
+    await verify(validMigrations)
+    const error = await getError(verify(keyCollisionMigrations))
+    expect(error.message).toBe(
+      `Migration key "0001_valid_user" was verified earlier in this process with another module: rake-db caches migrations by key, so give migrations of different sets distinct keys.`,
+    )
+  })
+
+  it("accepts verified migrations through new loaders", async () => {
+    await verify(validMigrations)
+    await verify(
+      Object.fromEntries(Object.entries(validMigrations).map(([key, load]) => [key, () => load()])),
     )
   })
 })

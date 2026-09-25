@@ -10,6 +10,14 @@ import {
   type MigrationScenarioModules,
 } from "./migration-scenario"
 
+/**
+ * Modules of the migrations verified in this process by migration key, per rake-db copy.
+ *
+ * rake-db caches loaded migrations by key for the whole process (https://github.com/romeerez/orchid-orm/issues/764),
+ * so a migration of another set under a verified key would silently run the verified one.
+ */
+const verifiedModules = new WeakMap<MigrateFn, Map<string, unknown>>()
+
 type MigrationItem = Parameters<
   NonNullable<MigrateConfig["beforeMigrate"]>
 >[0]["migrations"][number]
@@ -17,7 +25,8 @@ type MigrationItem = Parameters<
 /**
  * The rake-db module that the migrations import `change` from, such as `orchid-orm/migrations` or `rake-db`.
  *
- * rake-db collects `change()` calls in module state, so migrations run by another rake-db copy silently do nothing.
+ * rake-db collects `change()` calls in module state, so migrations run by another rake-db copy silently do nothing
+ * (https://github.com/romeerez/orchid-orm/issues/765).
  */
 export interface Migrator {
   migrate: MigrateFn
@@ -49,7 +58,8 @@ export interface VerifyMigrationsOptions {
  * Everything runs inside a test transaction that is rolled back at the end,
  * nested into the caller's test transaction when there is one.
  *
- * Throws if rake-db finds no migrations, and, after a successful run, if a scenario file matches no migration.
+ * Throws before running migrations if a migration key was verified earlier in this process with another module,
+ * if rake-db finds no migrations, and, after a successful run, if a scenario file matches no migration.
  */
 export async function verifyMigrations({
   db,
@@ -64,6 +74,14 @@ export async function verifyMigrations({
       `migrationsTable "${migrationsTable}" must not include a schema: it is placed in the temporary schema.`,
     )
   }
+
+  const loaders = "migrations" in config ? config.migrations : {}
+  let verified = verifiedModules.get(migrate)
+  if (!verified) {
+    verified = new Map()
+    verifiedModules.set(migrate, verified)
+  }
+  await checkMigrationKeys(verified, loaders)
 
   const scenarioFiles = await importMigrationScenarios(scenarioModules)
 
@@ -149,6 +167,11 @@ export async function verifyMigrations({
     }
   })
 
+  // rake-db has loaded every migration by now, so the loaders return cached modules without evaluating them again.
+  for (const [key, load] of Object.entries(loaders)) {
+    verified.set(key, await load())
+  }
+
   const unbound = scenarioFiles.find(
     ({ file }) => !history?.some(({ path }) => isScenarioFileOf(file, path)),
   )
@@ -156,6 +179,21 @@ export async function verifyMigrations({
     throw new Error(
       `Scenario file ${unbound.file} matches no migration: its name must start with a migration name followed by a dot.`,
     )
+  }
+}
+
+/** Throws if a migration key was verified earlier with another module. */
+async function checkMigrationKeys(
+  verified: Map<string, unknown>,
+  loaders: Record<string, () => Promise<unknown>>,
+) {
+  for (const [key, load] of Object.entries(loaders)) {
+    // Only verified keys are loaded here: loading a new migration before rake-db would evaluate its change() calls too early.
+    if (verified.has(key) && (await load()) !== verified.get(key)) {
+      throw new Error(
+        `Migration key "${key}" was verified earlier in this process with another module: rake-db caches migrations by key, so give migrations of different sets distinct keys.`,
+      )
+    }
   }
 }
 
