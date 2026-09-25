@@ -8,6 +8,7 @@ import {
   brokenRestoreMigrations,
   db,
   extraVersionMigrations,
+  fileBasedMigrationsPath,
   searchPathMigrations,
   validMigrations,
   testingDir,
@@ -97,7 +98,7 @@ describe("broken history", () => {
     expect(String((error.cause as Error).message)).toContain(`"extra" already exists`)
   })
 
-  it("names the migration that leaves an unexpected applied versions count", async () => {
+  it("names the migration that records an unexpected version", async () => {
     const error = await getError(
       verifyMigrations({
         db,
@@ -105,12 +106,73 @@ describe("broken history", () => {
       }),
     )
     expect(error.message).toBe(
-      `Migration "0001_extra_version_user" left 3 applied versions after re-up on clean schema, expected 1.`,
+      `Migration "0001_extra_version_user" left applied versions [0000, 0001] after "up on clean schema", expected [0001].`,
     )
   })
 })
 
 describe("config", () => {
+  it("finds migrations through migrationsPath", async () => {
+    const ran: string[] = []
+    await verifyMigrations({
+      db,
+      config: {
+        migrationsPath: fileBasedMigrationsPath,
+        import: (path) => import(path),
+        migrationsTable,
+        log: false,
+      },
+      scenarios: {
+        "0002_file_based_user_email.scenario.ts": {
+          default: scenario("adds email", {
+            setup() {},
+            async assertUp({ db, schemaRef }) {
+              await db.query`SELECT email FROM ${schemaRef("user")}`
+              ran.push("adds email")
+            },
+          }),
+        },
+      },
+    })
+    expect(ran).toEqual(["adds email"])
+  })
+
+  it("rejects a history without migrations", async () => {
+    const message = "Found no migrations to verify."
+    const empty = await getError(
+      verifyMigrations({ db, config: { migrations: {}, migrationsTable, log: false } }),
+    )
+    expect(empty.message).toBe(message)
+    const missing = await getError(
+      verifyMigrations({
+        db,
+        config: {
+          migrationsPath: `${fileBasedMigrationsPath}-missing`,
+          import: (path) => import(path),
+          migrationsTable,
+          log: false,
+        },
+      }),
+    )
+    expect(missing.message).toBe(message)
+  })
+
+  it("calls beforeMigrate of the config", async () => {
+    let calls = 0
+    await verifyMigrations({
+      db,
+      config: {
+        migrations: validMigrations,
+        migrationsTable,
+        log: false,
+        beforeMigrate() {
+          calls++
+        },
+      },
+    })
+    expect(calls).toBeGreaterThan(0)
+  })
+
   it("rejects a migrations table with a schema", async () => {
     const error = await getError(
       verifyMigrations({
@@ -221,10 +283,10 @@ describe("scenarios", () => {
     )
   })
 
-  it("rejects a scenario file of a missing migration before verification", async () => {
+  it("rejects a scenario file of a missing migration after verification", async () => {
     const error = await getError(verify("0099_missing", scenario("missing", { setup })))
     expect(error.message).toBe(
-      `Scenario file 0099_missing.scenario.ts matches no migration: its name must start with a migration key followed by a dot.`,
+      `Scenario file 0099_missing.scenario.ts matches no migration: its name must start with a migration name followed by a dot.`,
     )
   })
 

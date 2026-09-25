@@ -1,15 +1,11 @@
 import type { Db } from "pqb"
-import type { MigrateConfig } from "rake-db"
-
-/** Migration loaders keyed by migration name, as accepted by the `migrations` option of rake-db. */
-export type MigrationModules = Extract<MigrateConfig, { migrations: unknown }>["migrations"]
 
 /**
  * Scenario modules keyed by file path, such as the result of `import.meta.glob`.
  *
  * A value is a module or a function that imports it.
  * The module exports a scenario or an array of scenarios by default.
- * The file name starts with the key of the migration the scenarios belong to, followed by a dot.
+ * The file name starts with the name of the migration file the scenarios belong to, without extension, followed by a dot.
  */
 export type MigrationScenarioModules = Readonly<Record<string, unknown>>
 
@@ -73,37 +69,22 @@ function validateScenario(scenario: MigrationScenario) {
   }
 }
 
-/** Scenario bound to the key of its migration. */
-export interface BoundMigrationScenario {
-  migration: string
-  scenario: MigrationScenario
+/** Scenarios exported by one scenario file. */
+export interface MigrationScenarioFile {
+  file: string
+  scenarios: MigrationScenario[]
 }
 
 /**
- * Imports scenario modules and binds their scenarios to migrations by file name, in file path order.
+ * Imports scenario modules and validates their default exports, in file path order.
  *
- * Throws before any scenario runs if a file matches no migration or exports no scenarios.
+ * Throws before any scenario runs if a file exports no scenarios.
  */
-export async function bindMigrationScenarios(
+export async function importMigrationScenarios(
   modules: MigrationScenarioModules,
-  migrations: MigrationModules,
-): Promise<BoundMigrationScenario[]> {
-  const migrationIds = Object.keys(migrations).map((migration) => ({
-    migration,
-    id: getMigrationId(migration),
-  }))
-
-  const bound: BoundMigrationScenario[] = []
+): Promise<MigrationScenarioFile[]> {
+  const files: MigrationScenarioFile[] = []
   for (const file of Object.keys(modules).sort()) {
-    const fileName = getFileName(file)
-    // The dot after the key keeps "0001_user" from claiming "0001_user_role.scenario.ts".
-    const match = migrationIds.find(({ id }) => fileName.startsWith(`${id}.`))
-    if (!match) {
-      throw new Error(
-        `Scenario file ${file} matches no migration: its name must start with a migration key followed by a dot.`,
-      )
-    }
-
     const value = modules[file]
     const module = typeof value === "function" ? await value() : value
     const exported: unknown = (module as { default?: unknown } | undefined)?.default
@@ -113,13 +94,18 @@ export async function bindMigrationScenarios(
         `Scenario file ${file} must export a scenario or an array of scenarios by default.`,
       )
     }
-
     for (const scenario of scenarios) {
       validateScenario(scenario)
-      bound.push({ migration: match.migration, scenario })
     }
+    files.push({ file, scenarios })
   }
-  return bound
+  return files
+}
+
+/** Tells whether the scenario file belongs to the migration at the given rake-db path or key. */
+export function isScenarioFileOf(file: string, migrationPath: string): boolean {
+  // The dot after the name keeps "0001_user" from claiming "0001_user_role.scenario.ts".
+  return getFileName(file).startsWith(`${getMigrationName(migrationPath)}.`)
 }
 
 function isScenario(value: unknown): value is MigrationScenario {
@@ -131,9 +117,9 @@ function isScenario(value: unknown): value is MigrationScenario {
   )
 }
 
-/** Returns the migration file name without directories and extension, as rake-db derives it from the key. */
-function getMigrationId(key: string) {
-  return getFileName(key).replace(/\.[cm]?[jt]s$/, "")
+/** Returns the migration file name without directories and extension. */
+export function getMigrationName(path: string): string {
+  return getFileName(path).replace(/\.[cm]?[jt]s$/, "")
 }
 
 function getFileName(path: string) {

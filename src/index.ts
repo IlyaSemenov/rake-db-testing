@@ -1,7 +1,6 @@
 export {
   type MigrationDataScenarioOptions,
   type MigrationFailureScenarioOptions,
-  type MigrationModules,
   type MigrationScenario,
   type MigrationScenarioContext,
   type MigrationScenarioModules,

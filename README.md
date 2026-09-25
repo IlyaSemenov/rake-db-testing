@@ -66,7 +66,7 @@ test("migration history", async () => {
 })
 ```
 
-`config` is the migrator configuration of your project with the `migrations` object:
+`config` is the migrator configuration of your project:
 
 ```ts
 export const migrations = {
@@ -132,7 +132,9 @@ export default [
 ]
 ```
 
-The file name only has to start with the migration key followed by a dot, so a migration may also have several scenario files, such as `0005_username_citext.edge-cases.scenario.ts`.
+The file name only has to start with the migration name followed by a dot, so a migration may also have several scenario files, such as `0005_username_citext.edge-cases.scenario.ts`.
+
+With `migrationsPath`, keep scenario files in another directory: rake-db treats every file in it as a migration.
 
 Scenario callbacks receive a context:
 

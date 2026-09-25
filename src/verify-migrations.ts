@@ -8,17 +8,22 @@ import {
 } from "rake-db"
 
 import {
-  bindMigrationScenarios,
-  type BoundMigrationScenario,
-  type MigrationModules,
+  getMigrationName,
+  importMigrationScenarios,
+  isScenarioFileOf,
+  type MigrationScenario,
   type MigrationScenarioContext,
   type MigrationScenarioModules,
 } from "./migration-scenario"
 
+type MigrationItem = Parameters<
+  NonNullable<MigrateConfig["beforeMigrate"]>
+>[0]["migrations"][number]
+
 export interface VerifyMigrationsOptions {
   db: Db
-  /** Migrator configuration of the project; `migrations` and `migrationsTable` are taken from it. */
-  config: MigrateConfig & { migrations: MigrationModules }
+  /** Migrator configuration of the project. */
+  config: MigrateConfig
   /** Scenario modules keyed by file path; the file name binds scenarios to their migration. */
   scenarios?: MigrationScenarioModules
   /** Migration search_path for the temporary schema; defaults to the schema itself. */
@@ -30,13 +35,15 @@ export interface VerifyMigrationsOptions {
  *
  * For each migration in order:
  *
- * 1. `up` on the clean schema.
- * 2. In a nested savepoint: `down`, the migration's scenarios, and `up` again,
- *    after which the migrations table must hold exactly as many versions as migrations passed so far.
+ * 1. `up` on the clean schema must record exactly the version of this migration.
+ * 2. In a nested savepoint: `down` must remove that version, the migration's scenarios run,
+ *    and `up` again must record the same version.
  * 3. The savepoint is rolled back, keeping the clean schema for the next migration.
  *
  * Everything runs inside a test transaction that is rolled back at the end,
  * nested into the caller's test transaction when there is one.
+ *
+ * Throws if rake-db finds no migrations, and, after a successful run, if a scenario file matches no migration.
  */
 export async function verifyMigrations({
   db,
@@ -44,7 +51,6 @@ export async function verifyMigrations({
   scenarios: scenarioModules = {},
   searchPath = (schema) => schema,
 }: VerifyMigrationsOptions): Promise<void> {
-  const { migrations } = config
   const migrationsTable = config.migrationsTable ?? rakeDbConfigDefaults.migrationsTable
   if (migrationsTable.includes(".")) {
     throw new Error(
@@ -52,7 +58,7 @@ export async function verifyMigrations({
     )
   }
 
-  const scenarios = await bindMigrationScenarios(scenarioModules, migrations)
+  const scenarioFiles = await importMigrationScenarios(scenarioModules)
 
   const schema = `test_migrations_${crypto.randomUUID().replaceAll("-", "")}`
   const context: MigrationScenarioContext = {
@@ -60,46 +66,95 @@ export async function verifyMigrations({
     schema,
     schemaRef: (table) => db.ref(`${schema}.${table}`),
   }
+
+  // rake-db passes the whole ordered history to beforeMigrate before applying anything,
+  // so the pending migration is known even when its up fails.
+  let history: MigrationItem[] | undefined
   const migrateConfig: MigrateConfig = {
     ...config,
     migrationsTable: `${schema}.${migrationsTable}`,
     transactionSearchPath: searchPath(schema),
+    async beforeMigrate(arg) {
+      history ??= arg.migrations
+      await config.beforeMigrate?.(arg)
+    },
   }
   const up = () => runOneMigration(migrate, db, migrateConfig)
   const down = () => runOneMigration(rollback, db, migrateConfig)
+  const getAppliedVersions = async () => {
+    const versions = await db.query.pluck<string>`
+      SELECT version FROM ${db.ref(`${schema}.${migrationsTable}`)}
+    `
+    return versions.sort()
+  }
 
   await withRollback(db, async () => {
-    for (const [index, migration] of Object.keys(migrations).entries()) {
-      const failedAt = (step: string) => () => `Migration "${migration}" failed at "${step}".`
+    let applied: string[] = []
+    const getPending = () => history?.find(({ version }) => !applied.includes(version))
 
-      await withErrorContext(up, failedAt("up on clean schema"))
+    for (;;) {
+      await withErrorContext(up, () => {
+        const pending = getPending()
+        return pending
+          ? `Migration "${getMigrationName(pending.path)}" failed at "up on clean schema".`
+          : `Migrations failed to load.`
+      })
+      if (!history?.length) {
+        throw new Error("Found no migrations to verify.")
+      }
+
+      const migration = getPending()
+      if (!migration) {
+        break
+      }
+
+      const name = getMigrationName(migration.path)
+      const failedAt = (step: string) => () => `Migration "${name}" failed at "${step}".`
+      const migrated = [...applied, migration.version].sort()
+      const expectVersions = async (step: string, expected: string[]) => {
+        const actual = await getAppliedVersions()
+        if (actual.join() !== expected.join()) {
+          throw new Error(
+            `Migration "${name}" left applied versions [${actual.join(", ")}] after "${step}", expected [${expected.join(", ")}].`,
+          )
+        }
+      }
+
+      await expectVersions("up on clean schema", migrated)
 
       await withRollback(db, async () => {
         await withErrorContext(down, failedAt("down on clean schema"))
+        await expectVersions("down on clean schema", applied)
 
-        for (const bound of scenarios) {
-          if (bound.migration === migration) {
-            await withRollback(db, () => runScenario(bound, context, up, down))
+        for (const { file, scenarios } of scenarioFiles) {
+          if (isScenarioFileOf(file, migration.path)) {
+            for (const scenario of scenarios) {
+              await withRollback(db, () => runScenario(name, scenario, context, up, down))
+            }
           }
         }
 
         await withErrorContext(up, failedAt("re-up on clean schema"))
-
-        const appliedCount = await db.query.get<number>`
-          SELECT count(*)::int FROM ${db.ref(`${schema}.${migrationsTable}`)}
-        `
-        if (appliedCount !== index + 1) {
-          throw new Error(
-            `Migration "${migration}" left ${appliedCount} applied versions after re-up on clean schema, expected ${index + 1}.`,
-          )
-        }
+        await expectVersions("re-up on clean schema", migrated)
       })
+
+      applied = migrated
     }
   })
+
+  const unbound = scenarioFiles.find(
+    ({ file }) => !history?.some(({ path }) => isScenarioFileOf(file, path)),
+  )
+  if (unbound) {
+    throw new Error(
+      `Scenario file ${unbound.file} matches no migration: its name must start with a migration name followed by a dot.`,
+    )
+  }
 }
 
 async function runScenario(
-  { migration, scenario }: BoundMigrationScenario,
+  migration: string,
+  scenario: MigrationScenario,
   context: MigrationScenarioContext,
   up: () => Promise<void>,
   down: () => Promise<void>,

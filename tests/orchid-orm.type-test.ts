@@ -16,4 +16,8 @@ void verifyMigrations({ db: qb, config })
 void verifyMigrations({ db: orchidORM({ databaseURL: "" }, {}).$qb, config })
 
 const typedConfig: MigrateConfig = config
-void verifyMigrations({ db: qb, config: { ...typedConfig, migrations: validMigrations } })
+void verifyMigrations({ db: qb, config: typedConfig })
+void verifyMigrations({
+  db: qb,
+  config: { migrationsPath: "migrations", import: (path) => import(path) },
+})

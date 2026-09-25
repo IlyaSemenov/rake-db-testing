@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 
-import { bindMigrationScenarios, type MigrationScenario, scenario } from "./migration-scenario"
+import {
+  importMigrationScenarios,
+  isScenarioFileOf,
+  type MigrationScenario,
+  scenario,
+} from "./migration-scenario"
 
 const setup = () => {}
 
@@ -17,64 +22,40 @@ describe("scenario", () => {
   })
 })
 
-describe("bindMigrationScenarios", () => {
-  const migrations = {
-    "0001_user": async () => ({}),
-    "0002_user_role": async () => ({}),
+describe("importMigrationScenarios", () => {
+  const load = async (modules: Record<string, unknown>) => {
+    const files = await importMigrationScenarios(modules)
+    return files.map(({ file, scenarios }) => [file, scenarios.map(({ name }) => name)])
   }
 
-  const bind = async (modules: Record<string, unknown>) => {
-    const bound = await bindMigrationScenarios(modules, migrations)
-    return bound.map(({ migration, scenario }) => [migration, scenario.name])
-  }
-
-  it("binds scenarios to migrations by file name in path order", async () => {
+  it("imports scenarios in file path order", async () => {
     expect(
-      await bind({
+      await load({
         "./0002_user_role.scenario.ts": { default: scenario("role", { setup }) },
         "./0001_user.scenario.ts": {
           default: [scenario("user 1", { setup }), scenario("user 2", { setup })],
         },
-        "./0001_user.edge-cases.scenario.ts": { default: scenario("edge case", { setup }) },
       }),
     ).toEqual([
-      ["0001_user", "edge case"],
-      ["0001_user", "user 1"],
-      ["0001_user", "user 2"],
-      ["0002_user_role", "role"],
+      ["./0001_user.scenario.ts", ["user 1", "user 2"]],
+      ["./0002_user_role.scenario.ts", ["role"]],
     ])
   })
 
   it("imports modules given as functions", async () => {
     expect(
-      await bind({
+      await load({
         "0001_user.scenario.ts": async () => ({ default: scenario("lazy", { setup }) }),
       }),
-    ).toEqual([["0001_user", "lazy"]])
-  })
-
-  it("matches migration keys with directories and extensions", async () => {
-    const bound = await bindMigrationScenarios(
-      { "scenarios/0001_user.scenario.ts": { default: scenario("user", { setup }) } },
-      { "./migrations/0001_user.ts": async () => ({}) },
-    )
-    expect(bound.map(({ migration }) => migration)).toEqual(["./migrations/0001_user.ts"])
-  })
-
-  it("rejects a file that matches no migration", async () => {
-    await expect(
-      bind({ "0001_user_profile.scenario.ts": { default: scenario("profile", { setup }) } }),
-    ).rejects.toThrow(
-      "Scenario file 0001_user_profile.scenario.ts matches no migration: its name must start with a migration key followed by a dot.",
-    )
+    ).toEqual([["0001_user.scenario.ts", ["lazy"]]])
   })
 
   it("rejects a file without scenarios in its default export", async () => {
     const message =
       "Scenario file 0001_user.scenario.ts must export a scenario or an array of scenarios by default."
-    await expect(bind({ "0001_user.scenario.ts": {} })).rejects.toThrow(message)
+    await expect(load({ "0001_user.scenario.ts": {} })).rejects.toThrow(message)
     await expect(
-      bind({ "0001_user.scenario.ts": { default: [scenario("user", { setup }), {}] } }),
+      load({ "0001_user.scenario.ts": { default: [scenario("user", { setup }), {}] } }),
     ).rejects.toThrow(message)
   })
 
@@ -85,8 +66,25 @@ describe("bindMigrationScenarios", () => {
       assertUp() {},
       assertUpError() {},
     } as unknown as MigrationScenario
-    await expect(bind({ "0001_user.scenario.ts": { default: mixed } })).rejects.toThrow(
+    await expect(load({ "0001_user.scenario.ts": { default: mixed } })).rejects.toThrow(
       `Scenario "mixed" cannot combine assertUpError with assertUp or assertDown.`,
+    )
+  })
+})
+
+describe("isScenarioFileOf", () => {
+  it("matches a file named after the migration followed by a dot", () => {
+    expect(isScenarioFileOf("./0001_user.scenario.ts", "0001_user")).toBe(true)
+    expect(isScenarioFileOf("./0001_user.edge-cases.scenario.ts", "0001_user")).toBe(true)
+    expect(isScenarioFileOf("./0001_user_role.scenario.ts", "0001_user")).toBe(false)
+  })
+
+  it("ignores directories and the migration file extension", () => {
+    expect(
+      isScenarioFileOf("scenarios/0001_user.scenario.ts", "/app/migrations/0001_user.ts"),
+    ).toBe(true)
+    expect(isScenarioFileOf("scenarios\\0001_user.scenario.ts", "./migrations/0001_user.mjs")).toBe(
+      true,
     )
   })
 })
