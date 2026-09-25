@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig",
+  "compilerOptions": {
+    "paths": {
+      "rake-db-testing": ["../src"],
+      "rake-db-testing/fs": ["../src/fs"]
+    }
+  },
+  "include": ["**/*.ts"]
+}

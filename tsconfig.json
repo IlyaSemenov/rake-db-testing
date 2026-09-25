@@ -1,0 +1,11 @@
+{
+  "extends": "@tsconfig/bun",
+  "compilerOptions": {
+    "types": ["bun"],
+    "paths": {
+      "rake-db-testing": ["./src"],
+      "rake-db-testing/fs": ["./src/fs"]
+    }
+  },
+  "include": ["src/**/*.ts", "testing/**/*.ts", "*.ts"]
+}

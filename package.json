@@ -1,0 +1,69 @@
+{
+  "name": "rake-db-testing",
+  "version": "0.0.0",
+  "description": "Verify rake-db migration history and data migration scenarios on PostgreSQL",
+  "homepage": "https://github.com/IlyaSemenov/rake-db-testing#readme",
+  "bugs": "https://github.com/IlyaSemenov/rake-db-testing/issues",
+  "license": "MIT",
+  "author": "Ilya Semenov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IlyaSemenov/rake-db-testing.git"
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "imports": {
+    "#testing": "./testing/index.ts"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./fs": {
+      "import": "./dist/fs.mjs",
+      "require": "./dist/fs.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "lint": "oxlint --fix && oxfmt",
+    "lint:check": "oxlint && oxfmt --check",
+    "prepare": "lefthook install",
+    "prepublishOnly": "bun run build",
+    "test": "bun test",
+    "types": "tsc && tsc -p tests/tsconfig.json"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
+    "@changesets/cli": "^2.31.1",
+    "@tsconfig/bun": "^1.0.10",
+    "@types/bun": "^1.4.0",
+    "orchid-orm": "1.78.7",
+    "oxfmt": "^0.67.0",
+    "oxlint": "^1.82.0",
+    "postgres": "^3.4.9",
+    "pqb": "0.73.6",
+    "publint": "^0.3.22",
+    "rake-db": "2.37.10",
+    "rake-db-copy": "npm:rake-db@2.37.10",
+    "tsdown": "^0.22.14",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "pqb": ">=0.72.0 <1",
+    "rake-db": ">=2.37.0 <3"
+  },
+  "packageManager": "bun@1.4.0"
+}
